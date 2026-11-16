@@ -15,6 +15,7 @@ public:
     explicit Pro54AudioProcessorEditor (Pro54AudioProcessor&);
     ~Pro54AudioProcessorEditor() override;
 
+    void paint (juce::Graphics&) override;
     void resized() override;
 
 private:

@@ -1223,6 +1223,12 @@ Pro54AudioProcessorEditor::Pro54AudioProcessorEditor (Pro54AudioProcessor& p)
 
 Pro54AudioProcessorEditor::~Pro54AudioProcessorEditor() = default;
 
+void Pro54AudioProcessorEditor::paint (juce::Graphics& g)
+{
+    // The panel covers all of this, bar the odd fraction of a pixel that rounding can leave along the bottom
+    g.fillAll (juce::Colours::black);
+}
+
 void Pro54AudioProcessorEditor::resized()
 {
     pro54Processor.editorWidth = getWidth();

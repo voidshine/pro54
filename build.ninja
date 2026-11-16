@@ -37,7 +37,7 @@ common_flags = -fPIC -fvisibility=hidden -O2 -ffunction-sections -fdata-sections
 rule cxx
   depfile = $out.d
   deps = gcc
-  command = $cxx -MMD -MF $out.d -std=c++17 $common_flags $warnings -c $in -o $out
+  command = $cxx -MMD -MF $out.d -std=c++17 -fvisibility-inlines-hidden $common_flags $warnings -c $in -o $out
   description = CXX $in
 
 rule cc
