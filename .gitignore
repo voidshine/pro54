@@ -3,3 +3,6 @@ ext/JUCE
 build/
 .ninja_log
 .ninja_deps
+ext/clap
+ext/clap-helpers
+ext/clap-juce-extensions

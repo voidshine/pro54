@@ -1,12 +1,18 @@
-# Hand-written Ninja build for the "Pro54" VST3 plugin.
+# Hand-written Ninja build for the "Pro54" plugin: a VST3, and optionally a CLAP.
 #
 # There is no configure step: JUCE module sources are referenced directly out
 # of ext/JUCE, compiled as plain translation units (the same amalgamated
 # per-module .cpp/.c files the Projucer normally wraps), and linked into a
-# single VST3 shared object. Re-run `ninja` after editing this file.
+# single shared object per plugin format. Re-run `ninja` after editing this
+# file.
 #
-#   ninja            builds build/Pro54.vst3
-#   ninja install    also copies it into ~/.vst3
+#   ninja                builds build/Pro54.vst3
+#   ninja install        also copies it into ~/.vst3
+#   ninja clap           builds build/Pro54.clap
+#   ninja install-clap   also copies it into ~/.clap
+#
+# The CLAP targets want ext/clap, ext/clap-helpers and ext/clap-juce-extensions
+# as well as ext/JUCE. Nothing else looks for them.
 
 juce_dir = ext/JUCE/modules
 vst3_sdk = $juce_dir/juce_audio_processors_headless/format_types/VST3_SDK
@@ -26,6 +32,9 @@ defines = $module_defines $feature_defines -include src/JucePluginDefines.h
 
 includes = -I$juce_dir -I$vst3_sdk -Isrc
 
+clap_wrapper = ext/clap-juce-extensions
+clap_includes = -Iext/clap/include -Iext/clap-helpers/include -I$clap_wrapper/include
+
 pkg_cflags = $$(pkg-config --cflags freetype2 fontconfig)
 pkg_libs = $$(pkg-config --libs freetype2 fontconfig)
 
@@ -37,7 +46,7 @@ common_flags = -fPIC -fvisibility=hidden -O2 -ffunction-sections -fdata-sections
 rule cxx
   depfile = $out.d
   deps = gcc
-  command = $cxx -MMD -MF $out.d -std=c++17 -fvisibility-inlines-hidden $common_flags $warnings -c $in -o $out
+  command = $cxx -MMD -MF $out.d -std=c++17 -fvisibility-inlines-hidden $common_flags $extra -c $in -o $out
   description = CXX $in
 
 rule cc
@@ -58,16 +67,20 @@ rule install
   command = mkdir -p $$HOME/.vst3/$binary_dir && cp $in $$HOME/.vst3/$binary_dir/
   description = INSTALL ~/.vst3/Pro54.vst3
 
+rule install_clap
+  command = mkdir -p $$HOME/.clap && cp $in $$HOME/.clap/
+  description = INSTALL ~/.clap/Pro54.clap
+
 # --- our plugin sources ------------------------------------------------
 # (the engine and the presets are plain C++, with no JUCE in them)
 build $obj_dir/src/Pro54Engine.o: cxx src/Pro54Engine.cc
-  warnings = -Wall -Wextra
+  extra = -Wall -Wextra
 build $obj_dir/src/Pro54Presets.o: cxx src/Pro54Presets.cc
-  warnings = -Wall -Wextra
+  extra = -Wall -Wextra
 build $obj_dir/src/PluginProcessor.o: cxx src/PluginProcessor.cc
-  warnings = -Wall -Wextra
+  extra = -Wall -Wextra
 build $obj_dir/src/PluginEditor.o: cxx src/PluginEditor.cc
-  warnings = -Wall -Wextra
+  extra = -Wall -Wextra
 
 # --- JUCE module translation units --------------------------------------
 build $obj_dir/juce_core/juce_core.o: cxx $juce_dir/juce_core/juce_core.cpp
@@ -104,9 +117,16 @@ build $obj_dir/juce_audio_processors_headless/juce_audio_processors_headless.o: 
 
 build $obj_dir/juce_audio_plugin_client/juce_audio_plugin_client_VST3.o: cxx $juce_dir/juce_audio_plugin_client/juce_audio_plugin_client_VST3.cpp
 
+# --- the CLAP wrapper (not built by default) ------------------------------
+build $obj_dir/clap/clap-juce-wrapper.o: cxx $clap_wrapper/src/wrapper/clap-juce-wrapper.cpp
+  extra = $clap_includes
+build $obj_dir/clap/clap-juce-extensions.o: cxx $clap_wrapper/src/extensions/clap-juce-extensions.cpp
+  extra = $clap_includes
+
 # --- link ------------------------------------------------------------------
 # Ninja does not split a multi-path variable into separate inputs, so the
-# object list has to be spelled out explicitly here.
+# object list has to be spelled out explicitly, once for each format: they
+# differ only in the last line or two, the format's wrapper.
 build $obj_dir/Pro54.so: link $
     $obj_dir/src/Pro54Engine.o $
     $obj_dir/src/Pro54Presets.o $
@@ -136,6 +156,36 @@ build $obj_dir/Pro54.so: link $
     $obj_dir/juce_audio_processors_headless/juce_audio_processors_headless.o $
     $obj_dir/juce_audio_plugin_client/juce_audio_plugin_client_VST3.o
 
+build build/Pro54.clap: link $
+    $obj_dir/src/Pro54Engine.o $
+    $obj_dir/src/Pro54Presets.o $
+    $obj_dir/src/PluginProcessor.o $
+    $obj_dir/src/PluginEditor.o $
+    $obj_dir/juce_core/juce_core.o $
+    $obj_dir/juce_core/juce_core_CompilationTime.o $
+    $obj_dir/juce_core/juce_core_zlib.o $
+    $obj_dir/juce_events/juce_events.o $
+    $obj_dir/juce_data_structures/juce_data_structures.o $
+    $obj_dir/juce_graphics/juce_graphics.o $
+    $obj_dir/juce_graphics/juce_graphics_Harfbuzz.o $
+    $obj_dir/juce_graphics/juce_graphics_libjpg_1.o $
+    $obj_dir/juce_graphics/juce_graphics_libjpg_2.o $
+    $obj_dir/juce_graphics/juce_graphics_libjpg_3.o $
+    $obj_dir/juce_graphics/juce_graphics_libpng.o $
+    $obj_dir/juce_graphics/juce_graphics_lunasvg.o $
+    $obj_dir/juce_graphics/juce_graphics_Sheenbidi.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics_2.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics_3.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics_4.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics_5.o $
+    $obj_dir/juce_gui_extra/juce_gui_extra.o $
+    $obj_dir/juce_audio_basics/juce_audio_basics.o $
+    $obj_dir/juce_audio_processors/juce_audio_processors.o $
+    $obj_dir/juce_audio_processors_headless/juce_audio_processors_headless.o $
+    $obj_dir/clap/clap-juce-wrapper.o $
+    $obj_dir/clap/clap-juce-extensions.o
+
 # --- VST3 bundle -------------------------------------------------------
 build $bundle_dir/Contents/x86_64-linux/Pro54.so: copy $obj_dir/Pro54.so
 
@@ -143,5 +193,9 @@ build Pro54: phony $bundle_dir/Contents/x86_64-linux/Pro54.so
 
 # (not built by default)
 build install: install $bundle_dir/Contents/x86_64-linux/Pro54.so
+
+# --- CLAP, which is a single file on Linux (not built by default) ---------
+build clap: phony build/Pro54.clap
+build install-clap: install_clap build/Pro54.clap
 
 default Pro54
