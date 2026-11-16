@@ -1,0 +1,207 @@
+# Hand-written Ninja build for the "Pro54" plugin on macOS: a VST3 bundle,
+# and optionally a CLAP bundle. The macOS counterpart of build.ninja.
+#
+#   ninja -f build-mac.ninja                builds build/mac/Pro54.vst3
+#   ninja -f build-mac.ninja install        also copies it into ~/Library/Audio/Plug-Ins/VST3
+#   ninja -f build-mac.ninja clap           builds build/mac/Pro54.clap
+#   ninja -f build-mac.ninja install-clap   also copies it into ~/Library/Audio/Plug-Ins/CLAP
+#
+# It wants only the Xcode command line tools and ninja. The JUCE modules that
+# have an Objective-C++ (.mm) version are compiled from that, as JUCE's own
+# CMake support does on Apple platforms. The bundles are signed ad hoc, which
+# is enough for Apple Silicon to load them on this machine.
+
+juce_dir = ext/JUCE/modules
+vst3_sdk = $juce_dir/juce_audio_processors_headless/format_types/VST3_SDK
+obj_dir = build/mac/obj
+vst3_bundle = build/mac/Pro54.vst3
+clap_bundle = build/mac/Pro54.clap
+plugin_dir = $$HOME/Library/Audio/Plug-Ins
+
+cxx = clang++
+cc = clang
+
+# For a universal binary, use "-arch arm64 -arch x86_64".
+arch = -arch arm64
+min_macos = -mmacosx-version-min=11.0
+
+# --- preprocessor defines shared by every translation unit ---------------
+module_defines = -DJUCE_MODULE_AVAILABLE_juce_core=1 -DJUCE_MODULE_AVAILABLE_juce_events=1 -DJUCE_MODULE_AVAILABLE_juce_data_structures=1 -DJUCE_MODULE_AVAILABLE_juce_graphics=1 -DJUCE_MODULE_AVAILABLE_juce_gui_basics=1 -DJUCE_MODULE_AVAILABLE_juce_gui_extra=1 -DJUCE_MODULE_AVAILABLE_juce_audio_basics=1 -DJUCE_MODULE_AVAILABLE_juce_audio_processors=1 -DJUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1 -DJUCE_MODULE_AVAILABLE_juce_audio_plugin_client=1
+
+feature_defines = -DNDEBUG=1 -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_STRICT_REFCOUNTEDPOINTER=1 -DJUCE_WEB_BROWSER=0 -DJUCE_USE_CURL=0 -DJUCE_VST3_CAN_REPLACE_VST2=0
+
+defines = $module_defines $feature_defines -include src/JucePluginDefines.h
+
+includes = -I$juce_dir -I$vst3_sdk -Isrc
+
+clap_wrapper = ext/clap-juce-extensions
+clap_includes = -Iext/clap/include -Iext/clap-helpers/include -I$clap_wrapper/include
+
+common_flags = $arch $min_macos -fvisibility=hidden -O2 $defines $includes
+
+# The frameworks the modules ask for (OSXFrameworks in their headers), with
+# Metal weakly linked as juce_gui_basics wants.
+frameworks = -framework Accelerate -framework AudioToolbox -framework Cocoa -framework CoreAudio -framework CoreMIDI -framework Foundation -framework IOKit -framework QuartzCore -framework Security -weak_framework Metal -weak_framework MetalKit
+
+# --- rules -----------------------------------------------------------------
+# (clang++ compiles a .mm file as Objective-C++ by its extension)
+rule cxx
+  depfile = $out.d
+  deps = gcc
+  command = $cxx -MMD -MF $out.d -std=c++17 -fvisibility-inlines-hidden $common_flags $extra -c $in -o $out
+  description = CXX $in
+
+rule cc
+  depfile = $out.d
+  deps = gcc
+  command = $cc -MMD -MF $out.d $common_flags -c $in -o $out
+  description = CC $in
+
+rule link
+  command = $cxx $arch $min_macos -bundle -Wl,-dead_strip -Wl,-x -o $out $in $frameworks
+  description = LINK $out
+
+# Assembles and signs a bundle around a linked binary.
+rule bundle
+  command = rm -rf $bundle && mkdir -p $bundle/Contents/MacOS && cp $in $bundle/Contents/MacOS/Pro54 && cp $plist $bundle/Contents/Info.plist && cp mac/PkgInfo $bundle/Contents/PkgInfo && codesign --force --sign - $bundle && touch $out
+  description = BUNDLE $bundle
+
+rule install
+  command = mkdir -p $dest && rm -rf $dest/$name && cp -R $bundle $dest/
+  description = INSTALL $dest/$name
+
+# --- our plugin sources ------------------------------------------------
+build $obj_dir/src/Pro54Engine.o: cxx src/Pro54Engine.cc
+  extra = -Wall -Wextra
+build $obj_dir/src/Pro54Presets.o: cxx src/Pro54Presets.cc
+  extra = -Wall -Wextra
+build $obj_dir/src/PluginProcessor.o: cxx src/PluginProcessor.cc
+  extra = -Wall -Wextra
+build $obj_dir/src/PluginEditor.o: cxx src/PluginEditor.cc
+  extra = -Wall -Wextra
+
+# --- JUCE module translation units --------------------------------------
+build $obj_dir/juce_core/juce_core.o: cxx $juce_dir/juce_core/juce_core.mm
+build $obj_dir/juce_core/juce_core_CompilationTime.o: cxx $juce_dir/juce_core/juce_core_CompilationTime.cpp
+build $obj_dir/juce_core/juce_core_zlib.o: cc $juce_dir/juce_core/juce_core_zlib.c
+
+build $obj_dir/juce_events/juce_events.o: cxx $juce_dir/juce_events/juce_events.mm
+
+build $obj_dir/juce_data_structures/juce_data_structures.o: cxx $juce_dir/juce_data_structures/juce_data_structures.mm
+
+build $obj_dir/juce_graphics/juce_graphics.o: cxx $juce_dir/juce_graphics/juce_graphics.mm
+build $obj_dir/juce_graphics/juce_graphics_Harfbuzz.o: cxx $juce_dir/juce_graphics/juce_graphics_Harfbuzz.cpp
+build $obj_dir/juce_graphics/juce_graphics_libjpg_1.o: cc $juce_dir/juce_graphics/juce_graphics_libjpg_1.c
+build $obj_dir/juce_graphics/juce_graphics_libjpg_2.o: cc $juce_dir/juce_graphics/juce_graphics_libjpg_2.c
+build $obj_dir/juce_graphics/juce_graphics_libjpg_3.o: cc $juce_dir/juce_graphics/juce_graphics_libjpg_3.c
+build $obj_dir/juce_graphics/juce_graphics_libpng.o: cc $juce_dir/juce_graphics/juce_graphics_libpng.c
+build $obj_dir/juce_graphics/juce_graphics_lunasvg.o: cc $juce_dir/juce_graphics/juce_graphics_lunasvg.c
+build $obj_dir/juce_graphics/juce_graphics_Sheenbidi.o: cc $juce_dir/juce_graphics/juce_graphics_Sheenbidi.c
+
+build $obj_dir/juce_gui_basics/juce_gui_basics.o: cxx $juce_dir/juce_gui_basics/juce_gui_basics.mm
+build $obj_dir/juce_gui_basics/juce_gui_basics_2.o: cxx $juce_dir/juce_gui_basics/juce_gui_basics_2.cpp
+build $obj_dir/juce_gui_basics/juce_gui_basics_3.o: cxx $juce_dir/juce_gui_basics/juce_gui_basics_3.cpp
+build $obj_dir/juce_gui_basics/juce_gui_basics_4.o: cxx $juce_dir/juce_gui_basics/juce_gui_basics_4.cpp
+build $obj_dir/juce_gui_basics/juce_gui_basics_5.o: cxx $juce_dir/juce_gui_basics/juce_gui_basics_5.cpp
+
+build $obj_dir/juce_gui_extra/juce_gui_extra.o: cxx $juce_dir/juce_gui_extra/juce_gui_extra.mm
+
+build $obj_dir/juce_audio_basics/juce_audio_basics.o: cxx $juce_dir/juce_audio_basics/juce_audio_basics.mm
+
+build $obj_dir/juce_audio_processors/juce_audio_processors.o: cxx $juce_dir/juce_audio_processors/juce_audio_processors.mm
+
+build $obj_dir/juce_audio_processors_headless/juce_audio_processors_headless.o: cxx $juce_dir/juce_audio_processors_headless/juce_audio_processors_headless.mm
+
+build $obj_dir/juce_audio_plugin_client/juce_audio_plugin_client_VST3.o: cxx $juce_dir/juce_audio_plugin_client/juce_audio_plugin_client_VST3.mm
+
+# --- the CLAP wrapper (not built by default) ------------------------------
+# (on macOS the wrapper is compiled through its .mm, which includes the .cpp)
+build $obj_dir/clap/clap-juce-wrapper.o: cxx $clap_wrapper/src/wrapper/clap-juce-mac.mm
+  extra = $clap_includes
+build $obj_dir/clap/clap-juce-extensions.o: cxx $clap_wrapper/src/extensions/clap-juce-extensions.cpp
+  extra = $clap_includes
+
+# --- link ------------------------------------------------------------------
+build $obj_dir/Pro54-vst3: link $
+    $obj_dir/src/Pro54Engine.o $
+    $obj_dir/src/Pro54Presets.o $
+    $obj_dir/src/PluginProcessor.o $
+    $obj_dir/src/PluginEditor.o $
+    $obj_dir/juce_core/juce_core.o $
+    $obj_dir/juce_core/juce_core_CompilationTime.o $
+    $obj_dir/juce_core/juce_core_zlib.o $
+    $obj_dir/juce_events/juce_events.o $
+    $obj_dir/juce_data_structures/juce_data_structures.o $
+    $obj_dir/juce_graphics/juce_graphics.o $
+    $obj_dir/juce_graphics/juce_graphics_Harfbuzz.o $
+    $obj_dir/juce_graphics/juce_graphics_libjpg_1.o $
+    $obj_dir/juce_graphics/juce_graphics_libjpg_2.o $
+    $obj_dir/juce_graphics/juce_graphics_libjpg_3.o $
+    $obj_dir/juce_graphics/juce_graphics_libpng.o $
+    $obj_dir/juce_graphics/juce_graphics_lunasvg.o $
+    $obj_dir/juce_graphics/juce_graphics_Sheenbidi.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics_2.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics_3.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics_4.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics_5.o $
+    $obj_dir/juce_gui_extra/juce_gui_extra.o $
+    $obj_dir/juce_audio_basics/juce_audio_basics.o $
+    $obj_dir/juce_audio_processors/juce_audio_processors.o $
+    $obj_dir/juce_audio_processors_headless/juce_audio_processors_headless.o $
+    $obj_dir/juce_audio_plugin_client/juce_audio_plugin_client_VST3.o
+
+build $obj_dir/Pro54-clap: link $
+    $obj_dir/src/Pro54Engine.o $
+    $obj_dir/src/Pro54Presets.o $
+    $obj_dir/src/PluginProcessor.o $
+    $obj_dir/src/PluginEditor.o $
+    $obj_dir/juce_core/juce_core.o $
+    $obj_dir/juce_core/juce_core_CompilationTime.o $
+    $obj_dir/juce_core/juce_core_zlib.o $
+    $obj_dir/juce_events/juce_events.o $
+    $obj_dir/juce_data_structures/juce_data_structures.o $
+    $obj_dir/juce_graphics/juce_graphics.o $
+    $obj_dir/juce_graphics/juce_graphics_Harfbuzz.o $
+    $obj_dir/juce_graphics/juce_graphics_libjpg_1.o $
+    $obj_dir/juce_graphics/juce_graphics_libjpg_2.o $
+    $obj_dir/juce_graphics/juce_graphics_libjpg_3.o $
+    $obj_dir/juce_graphics/juce_graphics_libpng.o $
+    $obj_dir/juce_graphics/juce_graphics_lunasvg.o $
+    $obj_dir/juce_graphics/juce_graphics_Sheenbidi.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics_2.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics_3.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics_4.o $
+    $obj_dir/juce_gui_basics/juce_gui_basics_5.o $
+    $obj_dir/juce_gui_extra/juce_gui_extra.o $
+    $obj_dir/juce_audio_basics/juce_audio_basics.o $
+    $obj_dir/juce_audio_processors/juce_audio_processors.o $
+    $obj_dir/juce_audio_processors_headless/juce_audio_processors_headless.o $
+    $obj_dir/clap/clap-juce-wrapper.o $
+    $obj_dir/clap/clap-juce-extensions.o
+
+# --- bundles ---------------------------------------------------------------
+build $obj_dir/vst3.stamp: bundle $obj_dir/Pro54-vst3 | mac/Info-VST3.plist mac/PkgInfo
+  bundle = $vst3_bundle
+  plist = mac/Info-VST3.plist
+
+build $obj_dir/clap.stamp: bundle $obj_dir/Pro54-clap | mac/Info-CLAP.plist mac/PkgInfo
+  bundle = $clap_bundle
+  plist = mac/Info-CLAP.plist
+
+build Pro54: phony $obj_dir/vst3.stamp
+build clap: phony $obj_dir/clap.stamp
+
+# (neither is built by default)
+build install: install $obj_dir/vst3.stamp
+  bundle = $vst3_bundle
+  dest = $plugin_dir/VST3
+  name = Pro54.vst3
+
+build install-clap: install $obj_dir/clap.stamp
+  bundle = $clap_bundle
+  dest = $plugin_dir/CLAP
+  name = Pro54.clap
+
+default Pro54

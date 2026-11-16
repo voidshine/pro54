@@ -29,6 +29,20 @@ JUCE has no CLAP wrapper of its own, so the CLAP targets also want these three
 The VST3 build doesn't need them. The CLAP is the same processor and panel
 behind a different wrapper, and it reuses the VST3 build's object files.
 
+### macOS
+
+    ninja -f build-mac.ninja                # builds build/mac/Pro54.vst3
+    ninja -f build-mac.ninja install        # also copies it into ~/Library/Audio/Plug-Ins/VST3
+    ninja -f build-mac.ninja clap           # builds build/mac/Pro54.clap
+    ninja -f build-mac.ninja install-clap   # also copies it into ~/Library/Audio/Plug-Ins/CLAP
+
+This wants only the Xcode command line tools and `ninja`, plus `ext/JUCE` (and
+the three CLAP projects, for the CLAP) as above. It builds for arm64; set
+`arch` at the top of `build-mac.ninja` to `-arch arm64 -arch x86_64` for a
+universal binary. The bundles' `Info.plist` files are in `mac/`, and the
+bundles are signed ad hoc, which is enough to load them on the machine that
+built them but not to hand them to anyone else.
+
 ## Using it
 
 - **Programs.** The 512 factory presets are the plugin's programs, numbered as
