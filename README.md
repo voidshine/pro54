@@ -14,9 +14,8 @@ shared object that depends on nothing but the usual system libraries.
 
 This wants `g++`, `ninja`, `pkg-config` and the development files for
 freetype2, fontconfig and X11: the same as any JUCE plugin on Linux. JUCE is
-taken from `ext/JUCE`, which is a symlink to the copy in `../veq/ext`; point it
-somewhere else, or replace it with a copy, if that moves. It was written
-against JUCE 9.0.2.
+taken from `ext/JUCE`, which is a symlink to the JUCE library (9.0.2); point it
+to your JUCE directory or the project won't build.
 
 There's no CLAP build because this version of JUCE has no CLAP wrapper. The
 engine doesn't use JUCE at all though (see below), so it could be put behind
