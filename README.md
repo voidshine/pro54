@@ -112,10 +112,3 @@ lines that can't be reached or only guard against bad input, without a
 difference. The plugin itself was tested the same way against the engine,
 both directly and loaded as a VST3 through JUCE's hosting code, and the CLAP
 through the plain CLAP API.
-
-## Licence
-
-The Cmajor project, including the Pro54 patch and its presets, is published
-under the GPLv3 (or a commercial licence from Cmajor Software Ltd). The engine
-and the preset table here are derived from it, which makes this project as a
-whole subject to the GPLv3. JUCE's AGPLv3 option is compatible with that.
